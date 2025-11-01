@@ -838,6 +838,7 @@ export async function formatWebhookInput(
         user_name: '', // Could be resolved via additional API calls if needed
         text: event.text || '',
         timestamp: event.ts || event.event_ts || '',
+        thread_ts: event.thread_ts || '', // Parent thread timestamp (if message is in a thread)
         team_id: body.team_id || event.team || '',
         event_id: body.event_id || '',
       }
