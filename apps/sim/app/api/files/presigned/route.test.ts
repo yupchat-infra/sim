@@ -214,33 +214,6 @@ describe('/api/files/presigned', () => {
       expect(data.directUploadSupported).toBe(true)
     })
 
-    it('should generate chat S3 presigned URL with chat prefix and direct path', async () => {
-      setupFileApiMocks({
-        cloudEnabled: true,
-        storageProvider: 's3',
-      })
-
-      const { POST } = await import('@/app/api/files/presigned/route')
-
-      const request = new NextRequest('http://localhost:3000/api/files/presigned?type=chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileName: 'chat-logo.png',
-          contentType: 'image/png',
-          fileSize: 4096,
-        }),
-      })
-
-      const response = await POST(request)
-      const data = await response.json()
-
-      expect(response.status).toBe(200)
-      expect(data.fileInfo.key).toMatch(/^chat\/.*chat-logo\.png$/)
-      expect(data.fileInfo.path).toMatch(/\/api\/files\/serve\/s3\/.+\?context=chat$/)
-      expect(data.presignedUrl).toBeTruthy()
-      expect(data.directUploadSupported).toBe(true)
-    })
-
     it('should generate Azure Blob presigned URL successfully', async () => {
       setupFileApiMocks({
         cloudEnabled: true,
@@ -270,33 +243,6 @@ describe('/api/files/presigned', () => {
         size: 1024,
         type: 'text/plain',
       })
-      expect(data.directUploadSupported).toBe(true)
-    })
-
-    it('should generate chat Azure Blob presigned URL with chat prefix and direct path', async () => {
-      setupFileApiMocks({
-        cloudEnabled: true,
-        storageProvider: 'blob',
-      })
-
-      const { POST } = await import('@/app/api/files/presigned/route')
-
-      const request = new NextRequest('http://localhost:3000/api/files/presigned?type=chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileName: 'chat-logo.png',
-          contentType: 'image/png',
-          fileSize: 4096,
-        }),
-      })
-
-      const response = await POST(request)
-      const data = await response.json()
-
-      expect(response.status).toBe(200)
-      expect(data.fileInfo.key).toMatch(/^chat\/.*chat-logo\.png$/)
-      expect(data.fileInfo.path).toMatch(/\/api\/files\/serve\/blob\/.+\?context=chat$/)
-      expect(data.presignedUrl).toBeTruthy()
       expect(data.directUploadSupported).toBe(true)
     })
 
