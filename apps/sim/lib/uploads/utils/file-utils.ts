@@ -250,8 +250,15 @@ export function inferContextFromKey(key: string): StorageContext {
   }
 
   // Workspace files: UUID-like ID followed by timestamp pattern
-  // Pattern: {uuid}/{timestamp}-{random}-{filename}
+  // Pattern: {uuid}/{timestamp}-{random}-{filename} (cloud storage)
   if (key.match(/^[a-f0-9-]{36}\/\d+-[a-z0-9]+-/)) {
+    return 'workspace'
+  }
+
+  // Local workspace files: UUID segments separated by underscore, then timestamp pattern
+  // Pattern: {uuid}-{uuid}_{timestamp}-{random}-{filename} (local storage format)
+  // This handles workspace files stored locally without cloud storage
+  if (key.match(/^[a-f0-9-]{36}-[a-f0-9-]{36}_\d+-[a-z0-9]+-/)) {
     return 'workspace'
   }
 
@@ -260,6 +267,13 @@ export function inferContextFromKey(key: string): StorageContext {
   // This handles execution files stored locally without cloud storage
   if (key.match(/^[a-f0-9-]{36}-[a-f0-9-]{36}_[a-f0-9-]{36}_[a-f0-9-]{36}_/)) {
     return 'execution'
+  }
+
+  // Profile pictures: UUID followed directly by filename
+  // Pattern: {uuid}-{filename} (local storage format)
+  // This handles profile pictures stored locally
+  if (key.match(/^[a-f0-9-]{36}-[^/]+\.(jpg|jpeg|png|gif|webp|svg)$/i)) {
+    return 'profile-pictures'
   }
 
   // Copilot/General files: timestamp-random-filename (no path segments)
@@ -326,7 +340,6 @@ export function processSingleFileToUserFile(
   requestId: string,
   logger: Logger
 ): InternalFileMetadata {
-  // If it already has all required fields, return as-is
   if (file.id && file.key && file.uploadedAt && (file as any).context) {
     return file as unknown as InternalFileMetadata
   }
@@ -338,7 +351,6 @@ export function processSingleFileToUserFile(
     throw new Error(`File has no storage key: ${file.name || 'unknown'}`)
   }
 
-  // Determine context from key or file properties
   const context = (file as any).context || inferContextFromKey(storageKey)
 
   const internalMetadata: InternalFileMetadata = {
@@ -403,16 +415,10 @@ export function processFilesToUserFiles(
 export function sanitizeFilenameForMetadata(filename: string): string {
   return (
     filename
-      // Remove non-ASCII characters (keep only printable ASCII 0x20-0x7E)
       .replace(/[^\x20-\x7E]/g, '')
-      // Remove characters that are problematic in HTTP headers
       .replace(/["\\]/g, '')
-      // Replace multiple spaces with single space
       .replace(/\s+/g, ' ')
-      // Trim whitespace
-      .trim() ||
-    // Provide fallback if completely sanitized
-    'file'
+      .trim() || 'file'
   )
 }
 
