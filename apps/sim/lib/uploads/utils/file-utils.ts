@@ -255,6 +255,13 @@ export function inferContextFromKey(key: string): StorageContext {
     return 'workspace'
   }
 
+  // Local execution files: UUID segments separated by underscores/hyphens
+  // Pattern: {uuid}-{uuid}_{uuid}_{uuid}_{filename} (local storage format)
+  // This handles execution files stored locally without cloud storage
+  if (key.match(/^[a-f0-9-]{36}-[a-f0-9-]{36}_[a-f0-9-]{36}_[a-f0-9-]{36}_/)) {
+    return 'execution'
+  }
+
   // Copilot/General files: timestamp-random-filename (no path segments)
   // Pattern: {timestamp}-{random}-{filename}
   // NOTE: This is ambiguous - prefer explicit context parameter
