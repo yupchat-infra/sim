@@ -56,13 +56,11 @@ export async function POST(request: NextRequest) {
     const uploadType: StorageContext =
       uploadTypeParam === 'knowledge-base'
         ? 'knowledge-base'
-        : uploadTypeParam === 'chat'
-          ? 'chat'
-          : uploadTypeParam === 'copilot'
-            ? 'copilot'
-            : uploadTypeParam === 'profile-pictures'
-              ? 'profile-pictures'
-              : 'general'
+        : uploadTypeParam === 'copilot'
+          ? 'copilot'
+          : uploadTypeParam === 'profile-pictures'
+            ? 'profile-pictures'
+            : 'general'
 
     const MAX_FILE_SIZE = 100 * 1024 * 1024
     for (const file of files) {

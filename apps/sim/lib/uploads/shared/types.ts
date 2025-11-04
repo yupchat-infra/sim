@@ -1,7 +1,6 @@
 export type StorageContext =
   | 'general'
   | 'knowledge-base'
-  | 'chat'
   | 'copilot'
   | 'execution'
   | 'workspace'

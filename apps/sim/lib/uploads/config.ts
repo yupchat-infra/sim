@@ -49,18 +49,6 @@ export const BLOB_EXECUTION_FILES_CONFIG = {
   containerName: env.AZURE_STORAGE_EXECUTION_FILES_CONTAINER_NAME || 'sim-execution-files',
 }
 
-export const S3_CHAT_CONFIG = {
-  bucket: env.S3_CHAT_BUCKET_NAME || '',
-  region: env.AWS_REGION || '',
-}
-
-export const BLOB_CHAT_CONFIG = {
-  accountName: env.AZURE_ACCOUNT_NAME || '',
-  accountKey: env.AZURE_ACCOUNT_KEY || '',
-  connectionString: env.AZURE_CONNECTION_STRING || '',
-  containerName: env.AZURE_STORAGE_CHAT_CONTAINER_NAME || '',
-}
-
 export const S3_COPILOT_CONFIG = {
   bucket: env.S3_COPILOT_BUCKET_NAME || '',
   region: env.AWS_REGION || '',
@@ -126,11 +114,6 @@ function getS3Config(context: StorageContext): StorageConfig {
         bucket: S3_KB_CONFIG.bucket,
         region: S3_KB_CONFIG.region,
       }
-    case 'chat':
-      return {
-        bucket: S3_CHAT_CONFIG.bucket,
-        region: S3_CHAT_CONFIG.region,
-      }
     case 'copilot':
       return {
         bucket: S3_COPILOT_CONFIG.bucket,
@@ -170,13 +153,6 @@ function getBlobConfig(context: StorageContext): StorageConfig {
         accountKey: BLOB_KB_CONFIG.accountKey,
         connectionString: BLOB_KB_CONFIG.connectionString,
         containerName: BLOB_KB_CONFIG.containerName,
-      }
-    case 'chat':
-      return {
-        accountName: BLOB_CHAT_CONFIG.accountName,
-        accountKey: BLOB_CHAT_CONFIG.accountKey,
-        connectionString: BLOB_CHAT_CONFIG.connectionString,
-        containerName: BLOB_CHAT_CONFIG.containerName,
       }
     case 'copilot':
       return {

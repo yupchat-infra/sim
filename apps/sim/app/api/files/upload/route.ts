@@ -218,26 +218,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Priority 4: Context-specific uploads (copilot, chat, profile-pictures)
-      if (context === 'copilot' || context === 'chat' || context === 'profile-pictures') {
+      // Priority 4: Context-specific uploads (copilot, profile-pictures)
+      if (context === 'copilot' || context === 'profile-pictures') {
         if (!isImageFileType(file.type)) {
           throw new InvalidRequestError(
             `Only image files (JPEG, PNG, GIF, WebP, SVG) are allowed for ${context} uploads`
           )
-        }
-
-        if (context === 'chat' && workspaceId) {
-          const permission = await getUserEntityPermissions(
-            session.user.id,
-            'workspace',
-            workspaceId
-          )
-          if (permission === null) {
-            return NextResponse.json(
-              { error: 'Insufficient permissions for workspace' },
-              { status: 403 }
-            )
-          }
         }
 
         logger.info(`Uploading ${context} file: ${originalName}`)
@@ -247,10 +233,6 @@ export async function POST(request: NextRequest) {
           uploadedAt: new Date().toISOString(),
           purpose: context,
           userId: session.user.id,
-        }
-
-        if (workspaceId && context === 'chat') {
-          metadata.workspaceId = workspaceId
         }
 
         const fileInfo = await storageService.uploadFile({

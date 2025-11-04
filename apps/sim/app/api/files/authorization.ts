@@ -19,7 +19,7 @@ export interface AuthorizationResult {
  * Single source of truth for all file access control.
  *
  * Authorization rules:
- * - execution/workspace/knowledge-base/chat/copilot: Workspace membership required
+ * - execution/workspace/knowledge-base/copilot: Workspace membership required
  * - profile-pictures: User ownership required
  * - Legacy files: Check both new and old database tables
  */
