@@ -86,8 +86,14 @@ async function processFileOutputs(
     }
   } catch (error) {
     logger.error(`Error processing file outputs for tool ${tool.id}:`, error)
-    // Return original result if file processing fails
-    return result
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // Don't swallow the error - propagate it so the execution fails with clear feedback
+    return {
+      success: false,
+      output: result.output, // Preserve original output for debugging
+      error: `File processing failed: ${errorMessage}`,
+    }
   }
 }
 

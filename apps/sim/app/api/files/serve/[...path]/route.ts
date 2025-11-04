@@ -73,14 +73,7 @@ async function handleLocalFile(filename: string, userId: string): Promise<NextRe
       | StorageContext
       | undefined
 
-    const hasAccess = await verifyFileAccess(
-      filename,
-      userId,
-      null,
-      undefined,
-      contextParam,
-      true // isLocal = true
-    )
+    const hasAccess = await verifyFileAccess(filename, userId, contextParam)
 
     if (!hasAccess) {
       logger.warn('Unauthorized local file access attempt', { userId, filename })
@@ -129,14 +122,7 @@ async function handleCloudProxy(
       logger.info(`Inferred context: ${context} from key pattern: ${cloudKey}`)
     }
 
-    const hasAccess = await verifyFileAccess(
-      cloudKey,
-      userId,
-      legacyBucketType || null,
-      undefined,
-      context,
-      false // isLocal = false
-    )
+    const hasAccess = await verifyFileAccess(cloudKey, userId, context)
 
     if (!hasAccess) {
       logger.warn('Unauthorized cloud file access attempt', { userId, key: cloudKey, context })

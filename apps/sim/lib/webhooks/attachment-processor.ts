@@ -27,6 +27,7 @@ export class WebhookAttachmentProcessor {
       workflowId: string
       executionId: string
       requestId: string
+      userId?: string
     }
   ): Promise<UserFile[]> {
     if (!attachments || attachments.length === 0) {

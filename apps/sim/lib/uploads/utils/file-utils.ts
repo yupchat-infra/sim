@@ -1,6 +1,6 @@
 import type { Logger } from '@/lib/logs/console/logger'
 import type { StorageContext } from '@/lib/uploads'
-import type { UserFile } from '@/executor/types'
+import type { InternalFileMetadata, UserFile } from '@/executor/types'
 import { ACCEPTED_FILE_TYPES } from './validation'
 
 export interface FileAttachment {
@@ -307,20 +307,21 @@ export interface RawFileInput {
 }
 
 /**
- * Converts a single raw file object to UserFile format
+ * Converts a single raw file object to InternalFileMetadata format
  * @param file - Raw file object
  * @param requestId - Request ID for logging
  * @param logger - Logger instance
- * @returns UserFile object
+ * @returns InternalFileMetadata object with storage key
  * @throws Error if file has no storage key
  */
 export function processSingleFileToUserFile(
   file: RawFileInput,
   requestId: string,
   logger: Logger
-): UserFile {
-  if (file.id && file.key && file.uploadedAt) {
-    return file as UserFile
+): InternalFileMetadata {
+  // If it already has all required fields, return as-is
+  if (file.id && file.key && file.uploadedAt && (file as any).context) {
+    return file as unknown as InternalFileMetadata
   }
 
   const storageKey = file.key || (file.path ? extractStorageKey(file.path) : null)
@@ -330,13 +331,17 @@ export function processSingleFileToUserFile(
     throw new Error(`File has no storage key: ${file.name || 'unknown'}`)
   }
 
-  const userFile: UserFile = {
+  // Determine context from key or file properties
+  const context = (file as any).context || inferContextFromKey(storageKey)
+
+  const internalMetadata: InternalFileMetadata = {
     id: file.id || `file-${Date.now()}`,
     name: file.name,
     url: file.url || file.path || '',
     size: file.size,
     type: file.type || 'application/octet-stream',
     key: storageKey,
+    context,
     uploadedAt: file.uploadedAt
       ? typeof file.uploadedAt === 'string'
         ? file.uploadedAt
@@ -349,8 +354,10 @@ export function processSingleFileToUserFile(
       : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
   }
 
-  logger.info(`[${requestId}] Converted file to UserFile: ${userFile.name} (key: ${userFile.key})`)
-  return userFile
+  logger.info(
+    `[${requestId}] Converted file to InternalFileMetadata: ${internalMetadata.name} (key: ${internalMetadata.key})`
+  )
+  return internalMetadata
 }
 
 /**

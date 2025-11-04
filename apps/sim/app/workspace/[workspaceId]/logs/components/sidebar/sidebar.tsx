@@ -482,25 +482,32 @@ export function Sidebar({
                       Files ({log.files.length})
                     </h3>
                     <div className='space-y-2'>
-                      {log.files.map((file, index) => (
-                        <div
-                          key={file.id || index}
-                          className='flex items-center justify-between rounded-md border bg-muted/30 p-2'
-                        >
-                          <div className='min-w-0 flex-1'>
-                            <div className='truncate font-medium text-sm' title={file.name}>
-                              {file.name}
+                      {log.files.map((file, index) => {
+                        // Extract filename from storage key if name contains path separators
+                        const displayName = file.name.includes('/')
+                          ? file.name.split('/').pop() || file.name
+                          : file.name
+
+                        return (
+                          <div
+                            key={file.id || index}
+                            className='flex items-center justify-between rounded-md border bg-muted/30 p-2'
+                          >
+                            <div className='min-w-0 flex-1'>
+                              <div className='truncate font-medium text-sm' title={displayName}>
+                                {displayName}
+                              </div>
+                              <div className='text-muted-foreground text-xs'>
+                                {file.size ? `${Math.round(file.size / 1024)}KB` : 'Unknown size'}
+                                {file.type && ` • ${file.type.split('/')[0]}`}
+                              </div>
                             </div>
-                            <div className='text-muted-foreground text-xs'>
-                              {file.size ? `${Math.round(file.size / 1024)}KB` : 'Unknown size'}
-                              {file.type && ` • ${file.type.split('/')[0]}`}
+                            <div className='ml-2 flex items-center gap-1'>
+                              <FileDownload file={file} isExecutionFile={true} />
                             </div>
                           </div>
-                          <div className='ml-2 flex items-center gap-1'>
-                            <FileDownload file={file} isExecutionFile={true} />
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}

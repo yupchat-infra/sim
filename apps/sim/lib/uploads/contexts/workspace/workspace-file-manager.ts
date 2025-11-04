@@ -19,7 +19,8 @@ import {
   uploadFile,
 } from '@/lib/uploads/core/storage-service'
 import { getFileMetadataByKey, insertFileMetadata } from '@/lib/uploads/server/metadata'
-import type { UserFile } from '@/executor/types'
+import type { InternalFileMetadata, UserFile } from '@/executor/types'
+import { toUserFile } from '@/executor/types'
 
 const logger = createLogger('WorkspaceFileStorage')
 
@@ -49,6 +50,7 @@ export function generateWorkspaceFileKey(workspaceId: string, fileName: string):
 
 /**
  * Upload a file to workspace-scoped storage
+ * Returns UserFile for API responses (without internal storage details)
  */
 export async function uploadWorkspaceFile(
   workspaceId: string,
@@ -145,7 +147,8 @@ export async function uploadWorkspaceFile(
     const pathPrefix = getServePathPrefix()
     const serveUrl = `${pathPrefix}${encodeURIComponent(uploadResult.key)}?context=workspace`
 
-    return {
+    // Create internal metadata with storage key
+    const internalMetadata: InternalFileMetadata = {
       id: fileId,
       name: fileName,
       size: fileBuffer.length,
@@ -156,6 +159,9 @@ export async function uploadWorkspaceFile(
       expiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), // Far future date (effectively never expires)
       context: 'workspace',
     }
+
+    // Return UserFile (strips internal key and context fields)
+    return toUserFile(internalMetadata)
   } catch (error) {
     logger.error(`Failed to upload workspace file ${fileName}:`, error)
     throw new Error(

@@ -15,6 +15,7 @@ export interface ChatExecutionContext {
   workspaceId: string
   workflowId: string
   executionId: string
+  userId?: string
 }
 
 /**
@@ -29,14 +30,12 @@ export interface ChatExecutionContext {
  * @param files Array of chat file attachments
  * @param executionContext Execution context for temporary storage
  * @param requestId Unique request identifier for logging/tracing
- * @param userId User ID for file metadata (optional)
  * @returns Array of UserFile objects with upload results
  */
 export async function processChatFiles(
   files: ChatFile[],
   executionContext: ChatExecutionContext,
-  requestId: string,
-  userId?: string
+  requestId: string
 ): Promise<UserFile[]> {
   logger.info(
     `Processing ${files.length} chat files for execution ${executionContext.executionId}`,
@@ -53,12 +52,7 @@ export async function processChatFiles(
     mime: file.type,
   }))
 
-  const userFiles = await processExecutionFiles(
-    transformedFiles,
-    executionContext,
-    requestId,
-    userId
-  )
+  const userFiles = await processExecutionFiles(transformedFiles, executionContext, requestId)
 
   logger.info(`Successfully processed ${userFiles.length} chat files`, {
     requestId,
@@ -82,9 +76,8 @@ export async function processChatFiles(
 export async function uploadChatFile(
   file: ChatFile,
   executionContext: ChatExecutionContext,
-  requestId: string,
-  userId?: string
+  requestId: string
 ): Promise<UserFile> {
-  const [userFile] = await processChatFiles([file], executionContext, requestId, userId)
+  const [userFile] = await processChatFiles([file], executionContext, requestId)
   return userFile
 }

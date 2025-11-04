@@ -1,6 +1,7 @@
 import { createLogger } from '@/lib/logs/console/logger'
 import { uploadExecutionFile } from '@/lib/uploads/contexts/execution'
 import type { ExecutionContext, UserFile } from '@/executor/types'
+import { toUserFile } from '@/executor/types'
 import type { ToolConfig, ToolFileData } from '@/tools/types'
 
 const logger = createLogger('FileToolProcessor')
@@ -96,6 +97,22 @@ export class FileToolProcessor {
   }
 
   /**
+   * Check if the data is already a UserFile object
+   */
+  private static isUserFile(data: any): data is UserFile {
+    return (
+      data &&
+      typeof data === 'object' &&
+      'id' in data &&
+      'key' in data &&
+      'uploadedAt' in data &&
+      'expiresAt' in data &&
+      typeof data.id === 'string' &&
+      typeof data.key === 'string'
+    )
+  }
+
+  /**
    * Convert various file data formats to UserFile by storing in execution filesystem
    */
   private static async processFileData(
@@ -103,9 +120,16 @@ export class FileToolProcessor {
     context: ExecutionContext,
     outputKey: string
   ): Promise<UserFile> {
+    // If the data is already a UserFile (from previous processing), return it as-is
+    if (FileToolProcessor.isUserFile(fileData)) {
+      logger.info(
+        `Output '${outputKey}' is already a UserFile (${fileData.name}), skipping processing`
+      )
+      return fileData
+    }
+
     logger.info(`Processing file data for output '${outputKey}': ${fileData.name}`)
     try {
-      // Convert various formats to Buffer
       let buffer: Buffer
 
       if (Buffer.isBuffer(fileData.data)) {
@@ -117,7 +141,6 @@ export class FileToolProcessor {
         'type' in fileData.data &&
         'data' in fileData.data
       ) {
-        // Handle serialized Buffer objects (from JSON serialization)
         const serializedBuffer = fileData.data as { type: string; data: number[] }
         if (serializedBuffer.type === 'Buffer' && Array.isArray(serializedBuffer.data)) {
           buffer = Buffer.from(serializedBuffer.data)
@@ -128,10 +151,8 @@ export class FileToolProcessor {
           `Converted serialized Buffer to Buffer for ${fileData.name} (${buffer.length} bytes)`
         )
       } else if (typeof fileData.data === 'string' && fileData.data) {
-        // Assume base64 or base64url
         let base64Data = fileData.data
 
-        // Convert base64url to base64 if needed (Gmail API format)
         if (base64Data && (base64Data.includes('-') || base64Data.includes('_'))) {
           base64Data = base64Data.replace(/-/g, '+').replace(/_/g, '/')
         }
@@ -141,16 +162,12 @@ export class FileToolProcessor {
           `Converted base64 string to Buffer for ${fileData.name} (${buffer.length} bytes)`
         )
       } else if (fileData.url) {
-        // Download from URL
         logger.info(`Downloading file from URL: ${fileData.url}`)
-        const response = await fetch(fileData.url)
 
-        if (!response.ok) {
-          throw new Error(`Failed to download file from ${fileData.url}: ${response.statusText}`)
-        }
+        // Use server-side download helper that handles both internal and external URLs
+        const { downloadFileFromUrl } = await import('@/lib/uploads/utils/file-utils.server')
+        buffer = await downloadFileFromUrl(fileData.url)
 
-        const arrayBuffer = await response.arrayBuffer()
-        buffer = Buffer.from(arrayBuffer)
         logger.info(`Downloaded file from URL for ${fileData.name} (${buffer.length} bytes)`)
       } else {
         throw new Error(
@@ -158,17 +175,17 @@ export class FileToolProcessor {
         )
       }
 
-      // Validate buffer
       if (buffer.length === 0) {
         throw new Error(`File '${fileData.name}' has zero bytes`)
       }
 
-      // Store in execution filesystem
-      const userFile = await uploadExecutionFile(
+      // Upload file and get internal metadata with storage key
+      const internalMetadata = await uploadExecutionFile(
         {
           workspaceId: context.workspaceId || '',
           workflowId: context.workflowId,
           executionId: context.executionId || '',
+          userId: context.userId,
         },
         buffer,
         fileData.name,
@@ -176,8 +193,11 @@ export class FileToolProcessor {
       )
 
       logger.info(
-        `Successfully stored file '${fileData.name}' in execution filesystem with key: ${userFile.key}`
+        `Successfully stored file '${fileData.name}' in execution filesystem with key: ${internalMetadata.key}`
       )
+
+      // Convert to public UserFile type (strips internal key and context fields)
+      const userFile = toUserFile(internalMetadata)
       return userFile
     } catch (error) {
       logger.error(`Error processing file data for '${fileData.name}':`, error)

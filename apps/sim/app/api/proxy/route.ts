@@ -275,6 +275,17 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[${requestId}] Processing tool: ${toolId}`)
 
+    // Enrich executionContext with authenticated userId from server-side auth
+    // This ensures userId is always available for file uploads and other operations
+    const enrichedExecutionContext = executionContext
+      ? {
+          ...executionContext,
+          userId: authResult.userId || executionContext.userId, // Auth userId takes precedence
+        }
+      : authResult.userId
+        ? { userId: authResult.userId } // Create minimal context if none provided
+        : undefined
+
     const tool = getTool(toolId)
 
     if (!tool) {
@@ -311,7 +322,7 @@ export async function POST(request: NextRequest) {
       params,
       true, // skipProxy (we're already in the proxy)
       !hasFileOutputs, // skipPostProcess (don't skip if tool has file outputs)
-      executionContext // pass execution context for file processing
+      enrichedExecutionContext // pass enriched execution context with authenticated userId
     )
 
     if (!result.success) {

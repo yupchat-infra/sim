@@ -3,18 +3,48 @@ import type { BlockOutput } from '@/blocks/types'
 import type { SerializedBlock, SerializedWorkflow } from '@/serializer/types'
 
 /**
- * User-facing file object with simplified interface
+ * Internal file metadata with storage implementation details.
+ * Used for file operations, authorization, and storage management.
  */
-export interface UserFile {
+export interface InternalFileMetadata {
   id: string
   name: string
   url: string
   size: number
   type: string
-  key: string
+  key: string // Internal storage key used for serving and authorization
   uploadedAt: string
   expiresAt: string
-  context?: string
+  context: string // Storage context (e.g., 'execution', 'workspace')
+}
+
+/**
+ * Public-facing file object returned to clients.
+ * Excludes internal storage implementation details.
+ */
+export interface UserFile {
+  id: string
+  name: string
+  url: string // Absolute URL for file download
+  size: number
+  type: string
+  uploadedAt: string
+  expiresAt: string
+}
+
+/**
+ * Convert internal file metadata to public UserFile by stripping internal fields
+ */
+export function toUserFile(internal: InternalFileMetadata): UserFile {
+  return {
+    id: internal.id,
+    name: internal.name,
+    url: internal.url,
+    size: internal.size,
+    type: internal.type,
+    uploadedAt: internal.uploadedAt,
+    expiresAt: internal.expiresAt,
+  }
 }
 
 /**
@@ -107,6 +137,7 @@ export interface ExecutionContext {
   workflowId: string // Unique identifier for this workflow execution
   workspaceId?: string // Workspace ID for file storage scoping
   executionId?: string // Unique execution ID for file storage scoping
+  userId?: string // User ID for file ownership tracking
   // Whether this execution is running against deployed state (API/webhook/schedule/chat)
   // Manual executions in the builder should leave this undefined/false
   isDeployedContext?: boolean

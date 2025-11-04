@@ -424,14 +424,7 @@ async function handleCloudFile(
 
     const context = (explicitContext as StorageContext) || inferContextFromKey(cloudKey)
 
-    const hasAccess = await verifyFileAccess(
-      cloudKey,
-      userId,
-      null,
-      undefined,
-      context,
-      false // isLocal
-    )
+    const hasAccess = await verifyFileAccess(cloudKey, userId, context)
 
     if (!hasAccess) {
       logger.warn('Unauthorized cloud file parse attempt', { userId, key: cloudKey, context })
@@ -531,14 +524,7 @@ async function handleLocalFile(
     const filename = filePath.split('/').pop() || filePath
 
     const context = inferContextFromKey(filename)
-    const hasAccess = await verifyFileAccess(
-      filename,
-      userId,
-      null,
-      undefined,
-      context,
-      true // isLocal
-    )
+    const hasAccess = await verifyFileAccess(filename, userId, context)
 
     if (!hasAccess) {
       logger.warn('Unauthorized local file parse attempt', { userId, filename })

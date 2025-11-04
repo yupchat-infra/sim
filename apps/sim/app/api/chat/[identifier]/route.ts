@@ -138,14 +138,10 @@ export async function POST(
           workspaceId: workflowResult[0].workspaceId || '',
           workflowId: deployment.workflowId,
           executionId,
+          userId: deployment.userId,
         }
 
-        const uploadedFiles = await ChatFiles.processChatFiles(
-          files,
-          executionContext,
-          requestId,
-          deployment.userId
-        )
+        const uploadedFiles = await ChatFiles.processChatFiles(files, executionContext, requestId)
 
         if (uploadedFiles.length > 0) {
           workflowInput.files = uploadedFiles

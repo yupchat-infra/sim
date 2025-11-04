@@ -102,11 +102,11 @@ export async function POST(request: NextRequest) {
             workspaceId: workspaceId || '',
             workflowId,
             executionId,
+            userId: session.user.id, // userId available from session
           },
           buffer,
           originalName,
-          file.type,
-          session.user.id // userId available from session
+          file.type
         )
 
         uploadResults.push(userFile)

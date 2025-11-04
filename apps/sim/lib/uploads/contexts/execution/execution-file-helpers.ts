@@ -1,4 +1,4 @@
-import type { UserFile } from '@/executor/types'
+import type { InternalFileMetadata, UserFile } from '@/executor/types'
 
 /**
  * Execution context for file operations
@@ -7,10 +7,12 @@ export interface ExecutionContext {
   workspaceId: string
   workflowId: string
   executionId: string
+  userId?: string
 }
 
 /**
- * File metadata stored in execution logs - now just uses UserFile directly
+ * File metadata stored in execution logs - uses UserFile for external API
+ * Internal operations use InternalFileMetadata which includes storage keys
  */
 export type ExecutionFileMetadata = UserFile
 
@@ -58,8 +60,10 @@ export function getFileExpirationDate(): string {
  * Check if a file is from execution storage based on its key pattern
  * Execution files have keys in format: workspaceId/workflowId/executionId/filename
  * Regular files have keys in format: timestamp-random-filename or just filename
+ *
+ * Note: This function requires InternalFileMetadata (not UserFile) since it needs the key field
  */
-export function isExecutionFile(file: UserFile): boolean {
+export function isExecutionFile(file: InternalFileMetadata): boolean {
   if (!file.key) {
     return false
   }

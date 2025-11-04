@@ -1,5 +1,9 @@
 import type React from 'react'
-import { transformBlockData } from '@/app/workspace/[workspaceId]/logs/components/trace-spans/utils'
+import {
+  isUserFile,
+  transformBlockData,
+} from '@/app/workspace/[workspaceId]/logs/components/trace-spans/utils'
+import { FileDownload } from '../../sidebar/components/file-download'
 
 export function BlockDataDisplay({
   data,
@@ -48,6 +52,30 @@ export function BlockDataDisplay({
             ))}
           </div>
           <span className='text-muted-foreground'>]</span>
+        </div>
+      )
+    }
+
+    // Check for nested UserFile pattern: {file: UserFile}
+    // Many tools output files in this structure
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      const entries = Object.entries(value)
+
+      // Single 'file' key containing a UserFile object
+      if (entries.length === 1 && entries[0][0] === 'file' && isUserFile(entries[0][1])) {
+        return (
+          <div className='rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/50'>
+            <FileDownload file={entries[0][1] as any} isExecutionFile={true} />
+          </div>
+        )
+      }
+    }
+
+    // Check if this is a UserFile object and render with download button
+    if (isUserFile(value)) {
+      return (
+        <div className='rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/50'>
+          <FileDownload file={value as any} isExecutionFile={true} />
         </div>
       )
     }

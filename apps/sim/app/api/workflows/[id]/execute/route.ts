@@ -1,31 +1,123 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { z } from 'zod'
 import { checkHybridAuth } from '@/lib/auth/hybrid'
 import { checkServerSideUsageLimits } from '@/lib/billing'
 import { createLogger } from '@/lib/logs/console/logger'
 import { LoggingSession } from '@/lib/logs/execution/logging-session'
+import { uploadExecutionFile } from '@/lib/uploads/contexts/execution'
 import { generateRequestId, SSE_HEADERS } from '@/lib/utils'
 import { executeWorkflowCore } from '@/lib/workflows/executor/execution-core'
 import { type ExecutionEvent, encodeSSEEvent } from '@/lib/workflows/executor/execution-events'
 import { type ExecutionMetadata, ExecutionSnapshot } from '@/executor/execution/snapshot'
-import type { StreamingExecution } from '@/executor/types'
+import type { StreamingExecution, UserFile } from '@/executor/types'
 import type { SubflowType } from '@/stores/workflows/workflow/types'
 import { validateWorkflowAccess } from '../../middleware'
-
-const EnvVarsSchema = z.record(z.string())
 
 const logger = createLogger('WorkflowExecuteAPI')
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-class UsageLimitError extends Error {
-  statusCode: number
-  constructor(message: string, statusCode = 402) {
-    super(message)
-    this.statusCode = statusCode
+/**
+ * Process attachments with base64 data and convert them to UserFile objects
+ */
+async function processBase64Attachments(
+  attachments: any[] | undefined,
+  executionContext: {
+    workspaceId: string
+    workflowId: string
+    executionId: string
+    requestId: string
+    userId: string
   }
+): Promise<UserFile[]> {
+  if (!attachments || attachments.length === 0) {
+    return []
+  }
+
+  const processedFiles: UserFile[] = []
+
+  for (const attachment of attachments) {
+    try {
+      // If attachment already has a URL (pre-uploaded file), convert to UserFile format
+      if (attachment.url && !attachment.data) {
+        processedFiles.push({
+          id: attachment.id || `file-${Date.now()}`,
+          name: attachment.name,
+          url: attachment.url,
+          size: attachment.size || 0,
+          type: attachment.mime || attachment.type || 'application/octet-stream',
+          uploadedAt: attachment.uploadedAt || new Date().toISOString(),
+          expiresAt:
+            attachment.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })
+        continue
+      }
+
+      // Process attachments with data field
+      if (attachment.data) {
+        // Check if it's a URL type attachment (not base64 data URI)
+        if (
+          attachment.type === 'url' ||
+          (typeof attachment.data === 'string' &&
+            attachment.data.startsWith('http') &&
+            !attachment.data.includes('base64'))
+        ) {
+          // For URL type, use the URL directly
+          processedFiles.push({
+            id: attachment.id || `file-${Date.now()}`,
+            name: attachment.name,
+            url: attachment.data,
+            size: attachment.size || 0,
+            type: attachment.mime || 'application/octet-stream',
+            uploadedAt: attachment.uploadedAt || new Date().toISOString(),
+            expiresAt:
+              attachment.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          })
+          logger.info(
+            `[${executionContext.requestId}] Processed URL attachment '${attachment.name}': ${attachment.data}`
+          )
+          continue
+        }
+
+        // Process base64 data attachments
+        // Extract base64 data from data URI if present
+        let base64Data = attachment.data
+        if (typeof base64Data === 'string' && base64Data.includes('base64,')) {
+          base64Data = base64Data.split('base64,')[1]
+        }
+
+        // Convert base64 to Buffer
+        const buffer = Buffer.from(base64Data, 'base64')
+
+        // Upload to execution storage
+        const userFile = await uploadExecutionFile(
+          executionContext,
+          buffer,
+          attachment.name,
+          attachment.mime || attachment.type || 'application/octet-stream'
+        )
+
+        logger.info(
+          `[${executionContext.requestId}] Processed base64 attachment '${attachment.name}' (${buffer.length} bytes)`
+        )
+
+        processedFiles.push(userFile)
+      }
+    } catch (error) {
+      logger.error(
+        `[${executionContext.requestId}] Error processing attachment '${attachment.name}':`,
+        error
+      )
+      // Continue with other attachments rather than failing the entire request
+    }
+  }
+
+  logger.info(
+    `[${executionContext.requestId}] Successfully processed ${processedFiles.length}/${attachments.length} attachments`
+  )
+
+  return processedFiles
 }
 
 /**
@@ -88,7 +180,6 @@ export async function executeWorkflow(
     })
 
     if (streamConfig?.skipLoggingComplete) {
-      // Add streaming metadata for later completion
       return {
         ...result,
         _streamingMetadata: {
@@ -129,14 +220,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: workflowId } = await params
 
   try {
-    // Authenticate user (API key, session, or internal JWT)
     const auth = await checkHybridAuth(req, { requireWorkflowId: false })
     if (!auth.success || !auth.userId) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 })
     }
     const userId = auth.userId
 
-    // Validate workflow access (don't require deployment for manual client runs)
     const workflowValidation = await validateWorkflowAccess(req, workflowId, false)
     if (workflowValidation.error) {
       return NextResponse.json(
@@ -146,7 +235,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const workflow = workflowValidation.workflow!
 
-    // Parse request body (handle empty body for curl requests)
     let body: any = {}
     try {
       const text = await req.text()
@@ -173,7 +261,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const streamHeader = req.headers.get('X-Stream-Response') === 'true'
     const enableSSE = streamHeader || streamParam === true
 
-    // Check usage limits
     const usageCheck = await checkServerSideUsageLimits(userId)
     if (usageCheck.isExceeded) {
       return NextResponse.json(
@@ -182,10 +269,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       )
     }
 
+    // Log full input structure for debugging
     logger.info(`[${requestId}] Starting server-side execution`, {
       workflowId,
       userId,
       hasInput: !!input,
+      inputKeys: input ? Object.keys(input) : [],
+      hasAttachments: !!input?.attachments,
+      attachmentsIsArray: Array.isArray(input?.attachments),
+      attachmentsValue: input?.attachments,
+      fullInput: input,
       triggerType,
       authType: auth.authType,
       streamParam,
@@ -193,9 +286,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       enableSSE,
     })
 
-    // Generate execution ID
     const executionId = uuidv4()
-    // Map client trigger type to logging trigger type (excluding 'api-endpoint')
     type LoggingTriggerType = 'api' | 'webhook' | 'schedule' | 'manual' | 'chat'
     let loggingTriggerType: LoggingTriggerType = 'manual'
     if (
@@ -214,7 +305,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       requestId
     )
 
-    // NON-SSE PATH: Direct JSON execution for API calls, background jobs
+    // Process attachments with base64 data if present
+    let processedInput = input
+    logger.info(
+      `[${requestId}] Checking attachment processing condition: hasAttachments=${!!(input?.attachments)}, isArray=${Array.isArray(input?.attachments)}`
+    )
+    if (input?.attachments && Array.isArray(input.attachments)) {
+      logger.info(
+        `[${requestId}] Found ${input.attachments.length} attachments to process`,
+        input.attachments.map((a: any) => ({ name: a.name, hasData: !!a.data, hasUrl: !!a.url }))
+      )
+      try {
+        const processedAttachments = await processBase64Attachments(input.attachments, {
+          workspaceId: workflow.workspaceId,
+          workflowId,
+          executionId,
+          requestId,
+          userId,
+        })
+
+        logger.info(
+          `[${requestId}] Processed ${processedAttachments.length} attachments`,
+          processedAttachments
+        )
+
+        // Replace attachments with processed UserFile objects
+        if (processedAttachments.length > 0) {
+          processedInput = {
+            ...input,
+            attachments: processedAttachments,
+          }
+          logger.info(
+            `[${requestId}] Replaced ${processedAttachments.length} attachments with UserFile objects`
+          )
+        }
+      } catch (error) {
+        logger.error(`[${requestId}] Error processing attachments:`, error)
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Failed to process attachments: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     if (!enableSSE) {
       logger.info(`[${requestId}] Using non-SSE execution (direct JSON response)`)
       try {
@@ -232,7 +368,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const snapshot = new ExecutionSnapshot(
           metadata,
           workflow,
-          input,
+          processedInput,
           {},
           workflow.variables || {},
           selectedOutputs
@@ -244,7 +380,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           loggingSession,
         })
 
-        // Filter out logs and internal metadata for API responses
         const filteredResult = {
           success: result.success,
           output: result.output,
@@ -262,7 +397,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       } catch (error: any) {
         logger.error(`[${requestId}] Non-SSE execution failed:`, error)
 
-        // Extract execution result from error if available
         const executionResult = error.executionResult
 
         return NextResponse.json(
@@ -283,7 +417,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // SSE PATH: Stream execution events for client builder UI
     logger.info(`[${requestId}] Using SSE execution (streaming response)`)
     const encoder = new TextEncoder()
     let executorInstance: any = null
@@ -295,13 +428,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           if (isStreamClosed) return
 
           try {
-            logger.info(`[${requestId}] 📤 Sending SSE event:`, {
-              type: event.type,
-              data: event.data,
-            })
             controller.enqueue(encodeSSEEvent(event))
           } catch {
-            // Stream closed - stop sending events
             isStreamClosed = true
           }
         }
@@ -309,7 +437,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         try {
           const startTime = new Date()
 
-          // Send execution started event
           sendEvent({
             type: 'execution:started',
             timestamp: startTime.toISOString(),
@@ -320,7 +447,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           })
 
-          // SSE Callbacks
           const onBlockStart = async (
             blockId: string,
             blockName: string,
@@ -361,7 +487,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               iterationType: SubflowType
             }
           ) => {
-            // Check if this is an error completion
             const hasError = callbackData.output?.error
 
             if (hasError) {
@@ -468,7 +593,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const snapshot = new ExecutionSnapshot(
             metadata,
             workflow,
-            input,
+            processedInput,
             {},
             workflow.variables || {},
             selectedOutputs
@@ -487,7 +612,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             loggingSession,
           })
 
-          // Check if execution was cancelled
           if (result.error === 'Workflow execution was cancelled') {
             logger.info(`[${requestId}] Workflow execution was cancelled`)
             sendEvent({
@@ -499,10 +623,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 duration: result.metadata?.duration || 0,
               },
             })
-            return // Exit early
+            return
           }
 
-          // Send execution completed event
           sendEvent({
             type: 'execution:completed',
             timestamp: new Date().toISOString(),
@@ -519,10 +642,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         } catch (error: any) {
           logger.error(`[${requestId}] SSE execution failed:`, error)
 
-          // Extract execution result from error if available
           const executionResult = error.executionResult
 
-          // Send error event
           sendEvent({
             type: 'execution:error',
             timestamp: new Date().toISOString(),
@@ -534,7 +655,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             },
           })
         } finally {
-          // Close the stream if not already closed
           if (!isStreamClosed) {
             try {
               controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -549,14 +669,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         isStreamClosed = true
         logger.info(`[${requestId}] Client aborted SSE stream, cancelling executor`)
 
-        // Cancel the executor if it exists
         if (executorInstance && typeof executorInstance.cancel === 'function') {
           executorInstance.cancel()
         }
       },
     })
 
-    // Return SSE response
     return new NextResponse(stream, {
       headers: {
         ...SSE_HEADERS,

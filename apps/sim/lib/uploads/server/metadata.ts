@@ -2,6 +2,7 @@ import { db } from '@sim/db'
 import { workspaceFiles } from '@sim/db/schema'
 import { and, eq } from 'drizzle-orm'
 import { createLogger } from '@/lib/logs/console/logger'
+import type { InternalFileMetadata, UserFile } from '@/executor/types'
 import type { StorageContext } from '../shared/types'
 
 const logger = createLogger('FileMetadata')
@@ -199,4 +200,33 @@ export async function getFileMetadataByContext(
 export async function deleteFileMetadata(key: string): Promise<boolean> {
   await db.delete(workspaceFiles).where(eq(workspaceFiles.key, key))
   return true
+}
+
+/**
+ * Convert UserFile to InternalFileMetadata by looking up the storage key from database
+ * This is needed when tools need to download files but only have access to UserFile
+ */
+export async function userFileToInternal(userFile: UserFile): Promise<InternalFileMetadata | null> {
+  const [record] = await db
+    .select()
+    .from(workspaceFiles)
+    .where(eq(workspaceFiles.id, userFile.id))
+    .limit(1)
+
+  if (!record) {
+    logger.warn(`No metadata found for file ID: ${userFile.id}`)
+    return null
+  }
+
+  return {
+    id: record.id,
+    name: record.originalName,
+    url: userFile.url,
+    size: record.size,
+    type: record.contentType,
+    key: record.key,
+    uploadedAt: record.uploadedAt.toISOString(),
+    expiresAt: userFile.expiresAt,
+    context: record.context,
+  }
 }

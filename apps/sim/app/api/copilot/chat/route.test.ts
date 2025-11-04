@@ -107,7 +107,21 @@ describe('Copilot Chat API Route', () => {
         SIM_AGENT_API_URL: 'http://localhost:8000',
         COPILOT_API_KEY: 'test-sim-agent-key',
         BETTER_AUTH_URL: 'http://localhost:3000',
+        NODE_ENV: 'test',
       },
+      getEnv: (key: string) => {
+        const mockEnv: Record<string, string> = {
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+          SIM_AGENT_API_URL: 'http://localhost:8000',
+          COPILOT_API_KEY: 'test-sim-agent-key',
+          BETTER_AUTH_URL: 'http://localhost:3000',
+        }
+        return mockEnv[key]
+      },
+      isTruthy: (value: string | boolean | number | undefined) =>
+        typeof value === 'string'
+          ? value.toLowerCase() === 'true' || value === '1'
+          : Boolean(value),
     }))
 
     global.fetch = vi.fn()

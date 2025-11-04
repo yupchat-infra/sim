@@ -114,7 +114,6 @@ export async function POST(request: NextRequest) {
 
     logger.info(`[${requestId}] Downloading file from storage`, {
       fileName: userFile.name,
-      key: userFile.key,
       size: userFile.size,
     })
 

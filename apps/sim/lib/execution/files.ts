@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { createLogger } from '@/lib/logs/console/logger'
 import { uploadExecutionFile } from '@/lib/uploads/contexts/execution'
 import type { UserFile } from '@/executor/types'
+import { toUserFile } from '@/executor/types'
 
 const logger = createLogger('ExecutionFiles')
 
@@ -12,9 +13,13 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
  */
 export async function processExecutionFile(
   file: { type: string; data: string; name: string; mime?: string },
-  executionContext: { workspaceId: string; workflowId: string; executionId: string },
-  requestId: string,
-  userId?: string
+  executionContext: {
+    workspaceId: string
+    workflowId: string
+    executionId: string
+    userId?: string
+  },
+  requestId: string
 ): Promise<UserFile | null> {
   if (file.type === 'file' && file.data && file.name) {
     const dataUrlPrefix = 'data:'
@@ -44,16 +49,15 @@ export async function processExecutionFile(
 
     logger.debug(`[${requestId}] Uploading file: ${file.name} (${buffer.length} bytes)`)
 
-    const userFile = await uploadExecutionFile(
+    const internalMetadata = await uploadExecutionFile(
       executionContext,
       buffer,
       file.name,
-      mimeType || file.mime || 'application/octet-stream',
-      userId
+      mimeType || file.mime || 'application/octet-stream'
     )
 
     logger.debug(`[${requestId}] Successfully uploaded ${file.name}`)
-    return userFile
+    return toUserFile(internalMetadata)
   }
 
   if (file.type === 'url' && file.data) {
@@ -63,7 +67,6 @@ export async function processExecutionFile(
       name: file.name,
       size: 0,
       type: file.mime || 'application/octet-stream',
-      key: `url/${file.name}`,
       uploadedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     }
@@ -77,9 +80,13 @@ export async function processExecutionFile(
  */
 export async function processExecutionFiles(
   fieldValue: any,
-  executionContext: { workspaceId: string; workflowId: string; executionId: string },
-  requestId: string,
-  userId?: string
+  executionContext: {
+    workspaceId: string
+    workflowId: string
+    executionId: string
+    userId?: string
+  },
+  requestId: string
 ): Promise<UserFile[]> {
   if (!fieldValue || typeof fieldValue !== 'object') {
     return []
@@ -91,7 +98,7 @@ export async function processExecutionFiles(
 
   for (const file of files) {
     try {
-      const userFile = await processExecutionFile(file, fullContext, requestId, userId)
+      const userFile = await processExecutionFile(file, fullContext, requestId)
 
       if (userFile) {
         uploadedFiles.push(userFile)

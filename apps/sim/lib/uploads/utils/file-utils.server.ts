@@ -2,15 +2,17 @@
 
 import type { Logger } from '@/lib/logs/console/logger'
 import type { StorageContext } from '@/lib/uploads'
-import type { UserFile } from '@/executor/types'
+import type { InternalFileMetadata, UserFile } from '@/executor/types'
 import { inferContextFromKey } from './file-utils'
 
 /**
  * Check if a file is from execution storage based on its key pattern
  * Execution files have keys in format: workspaceId/workflowId/executionId/filename
  * Regular files have keys in format: timestamp-random-filename or just filename
+ *
+ * Note: Requires InternalFileMetadata (not UserFile) since it needs the key field
  */
-function isExecutionFile(file: UserFile): boolean {
+function isExecutionFile(file: InternalFileMetadata): boolean {
   if (!file.key) {
     return false
   }
@@ -59,34 +61,61 @@ export async function downloadFileFromUrl(fileUrl: string, timeoutMs = 180000): 
 }
 
 /**
+ * Helper to convert UserFile to InternalFileMetadata for download operations
+ * This looks up the storage key from the database using the file ID
+ */
+async function ensureInternalMetadata(
+  file: InternalFileMetadata | UserFile
+): Promise<InternalFileMetadata> {
+  // Check if it's already InternalFileMetadata (has key field)
+  if ('key' in file && file.key) {
+    return file as InternalFileMetadata
+  }
+
+  // It's a UserFile - need to look up the key from database
+  const { userFileToInternal } = await import('@/lib/uploads/server/metadata')
+  const internal = await userFileToInternal(file)
+
+  if (!internal) {
+    throw new Error(`Failed to lookup storage key for file: ${file.id}`)
+  }
+
+  return internal
+}
+
+/**
  * Downloads a file from storage (execution or regular)
- * @param userFile - UserFile object
+ * @param fileMetadata - InternalFileMetadata object with storage key, or UserFile (will be converted)
  * @param requestId - Request ID for logging
  * @param logger - Logger instance
  * @returns Buffer containing file data
  */
 export async function downloadFileFromStorage(
-  userFile: UserFile,
+  file: InternalFileMetadata | UserFile,
   requestId: string,
   logger: Logger
 ): Promise<Buffer> {
+  // Ensure we have internal metadata with storage key
+  const fileMetadata = await ensureInternalMetadata(file)
+
   let buffer: Buffer
 
-  if (isExecutionFile(userFile)) {
-    logger.info(`[${requestId}] Downloading from execution storage: ${userFile.key}`)
+  if (isExecutionFile(fileMetadata)) {
+    logger.info(`[${requestId}] Downloading from execution storage: ${fileMetadata.key}`)
     const { downloadExecutionFile } = await import(
       '@/lib/uploads/contexts/execution/execution-file-manager'
     )
-    buffer = await downloadExecutionFile(userFile)
-  } else if (userFile.key) {
-    const context = (userFile.context as StorageContext) || inferContextFromKey(userFile.key)
+    buffer = await downloadExecutionFile(fileMetadata)
+  } else if (fileMetadata.key) {
+    const context =
+      (fileMetadata.context as StorageContext) || inferContextFromKey(fileMetadata.key)
     logger.info(
-      `[${requestId}] Downloading from ${context} storage (${userFile.context ? 'explicit' : 'inferred'}): ${userFile.key}`
+      `[${requestId}] Downloading from ${context} storage (${fileMetadata.context ? 'explicit' : 'inferred'}): ${fileMetadata.key}`
     )
 
     const { downloadFile } = await import('@/lib/uploads/core/storage-service')
     buffer = await downloadFile({
-      key: userFile.key,
+      key: fileMetadata.key,
       context,
     })
   } else {

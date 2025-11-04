@@ -59,14 +59,7 @@ export async function POST(request: NextRequest) {
 
         const context = inferContextFromKey(storageKey)
 
-        const hasAccess = await verifyFileAccess(
-          storageKey,
-          userId,
-          null,
-          undefined,
-          context,
-          false // isLocal
-        )
+        const hasAccess = await verifyFileAccess(storageKey, userId, context)
 
         if (!hasAccess) {
           logger.warn(`[${requestId}] Unauthorized presigned URL generation attempt`, {

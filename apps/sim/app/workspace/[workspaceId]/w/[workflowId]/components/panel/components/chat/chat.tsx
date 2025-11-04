@@ -16,13 +16,58 @@ import {
   OutputSelect,
 } from '@/app/workspace/[workspaceId]/w/[workflowId]/components/panel/components/chat/components'
 import { useWorkflowExecution } from '@/app/workspace/[workspaceId]/w/[workflowId]/hooks/use-workflow-execution'
-import type { BlockLog, ExecutionResult } from '@/executor/types'
+import type { BlockLog, ExecutionResult, UserFile } from '@/executor/types'
 import { useExecutionStore } from '@/stores/execution/store'
 import { useChatStore } from '@/stores/panel/chat/store'
 import { useConsoleStore } from '@/stores/panel/console/store'
 import { useWorkflowRegistry } from '@/stores/workflows/registry/store'
 
 const logger = createLogger('ChatPanel')
+
+/**
+ * Check if an object is a UserFile
+ */
+function isUserFile(obj: any): obj is UserFile {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    'id' in obj &&
+    'name' in obj &&
+    'url' in obj &&
+    'size' in obj &&
+    'type' in obj &&
+    typeof obj.id === 'string' &&
+    typeof obj.name === 'string' &&
+    typeof obj.url === 'string' &&
+    typeof obj.size === 'number'
+  )
+}
+
+/**
+ * Format file size for display
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`
+}
+
+/**
+ * Render a UserFile with download button and metadata
+ */
+function renderFileOutput(file: UserFile): string {
+  const sizeStr = formatFileSize(file.size)
+  const typeDisplay = file.type.split('/').pop()?.toUpperCase() || 'FILE'
+
+  return `📁 **${file.name}** (${sizeStr}, ${typeDisplay})
+
+[Download File](${file.url})
+
+Uploaded: ${new Date(file.uploadedAt).toLocaleString()}
+${file.expiresAt ? `Expires: ${new Date(file.expiresAt).toLocaleString()}` : ''}`
+}
 
 interface ChatFile {
   id: string
@@ -468,11 +513,41 @@ export function Chat({ chatMessage, setChatMessage }: ChatProps) {
       // Add a new message for each resolved output
       finalOutputs.forEach((output) => {
         let content = ''
+
         if (typeof output === 'string') {
           content = output
         } else if (output && typeof output === 'object') {
-          // For structured responses, pretty print the JSON
-          content = `\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\``
+          // Check for nested file output (e.g., { file: UserFile })
+          if ('file' in output && isUserFile(output.file)) {
+            content = renderFileOutput(output.file)
+            logger.info('Detected nested file output in workflow result', {
+              fileName: output.file.name,
+            })
+          }
+          // Check for files array output (e.g., { files: UserFile[] })
+          else if (
+            'files' in output &&
+            Array.isArray(output.files) &&
+            output.files.every(isUserFile)
+          ) {
+            content = output.files
+              .map((file: UserFile) => renderFileOutput(file))
+              .join('\n\n---\n\n')
+            logger.info('Detected files array output in workflow result', {
+              fileCount: output.files.length,
+            })
+          }
+          // Check if output itself is a UserFile
+          else if (isUserFile(output)) {
+            content = renderFileOutput(output)
+            logger.info('Detected direct file output in workflow result', {
+              fileName: output.name,
+            })
+          }
+          // Otherwise, pretty print as JSON
+          else {
+            content = `\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\``
+          }
         }
 
         if (content) {

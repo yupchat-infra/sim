@@ -270,6 +270,7 @@ export async function executeWorkflowCore(
       selectedOutputs,
       executionId,
       workspaceId: providedWorkspaceId,
+      userId,
       isDeployedContext: triggerType !== 'manual',
       onBlockStart,
       onBlockComplete,

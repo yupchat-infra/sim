@@ -131,3 +131,25 @@ export function formatDurationDisplay(ms: number): string {
   }
   return `${(ms / 1000).toFixed(2)}s`
 }
+
+/**
+ * Check if a value is a UserFile object
+ * UserFile objects have specific required properties
+ */
+export function isUserFile(value: unknown): boolean {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const obj = value as Record<string, unknown>
+
+  return (
+    typeof obj.id === 'string' &&
+    typeof obj.name === 'string' &&
+    typeof obj.url === 'string' &&
+    typeof obj.size === 'number' &&
+    typeof obj.type === 'string' &&
+    typeof obj.uploadedAt === 'string' &&
+    typeof obj.expiresAt === 'string'
+  )
+}

@@ -1,5 +1,6 @@
 import { createLogger } from '@/lib/logs/console/logger'
-import type { UserFile } from '@/executor/types'
+import { getBaseUrl } from '@/lib/urls/utils'
+import type { InternalFileMetadata } from '@/executor/types'
 import type { ExecutionContext } from './execution-file-helpers'
 import {
   generateExecutionFileKey,
@@ -11,20 +12,51 @@ const logger = createLogger('ExecutionFileStorage')
 
 /**
  * Upload a file to execution-scoped storage
+ * Returns internal metadata with storage key for operations
  */
 export async function uploadExecutionFile(
   context: ExecutionContext,
   fileBuffer: Buffer,
   fileName: string,
-  contentType: string,
-  userId?: string
-): Promise<UserFile> {
+  contentType: string
+): Promise<InternalFileMetadata> {
+  // Validate required context fields
+  if (!context.userId) {
+    throw new Error(
+      `userId is required for uploading execution files. Context: ${JSON.stringify({
+        workspaceId: context.workspaceId,
+        workflowId: context.workflowId,
+        executionId: context.executionId,
+      })}`
+    )
+  }
+
+  if (!context.workspaceId) {
+    throw new Error(
+      `workspaceId is required for uploading execution files. Context: ${JSON.stringify({
+        userId: context.userId,
+        workflowId: context.workflowId,
+        executionId: context.executionId,
+      })}`
+    )
+  }
+
+  if (!context.executionId) {
+    throw new Error(
+      `executionId is required for uploading execution files. Context: ${JSON.stringify({
+        userId: context.userId,
+        workspaceId: context.workspaceId,
+        workflowId: context.workflowId,
+      })}`
+    )
+  }
+
   logger.info(`Uploading execution file: ${fileName} for execution ${context.executionId}`)
   logger.debug(`File upload context:`, {
     workspaceId: context.workspaceId,
     workflowId: context.workflowId,
     executionId: context.executionId,
-    userId: userId || 'not provided',
+    userId: context.userId,
     fileName,
     bufferSize: fileBuffer.length,
   })
@@ -41,8 +73,8 @@ export async function uploadExecutionFile(
     workspaceId: context.workspaceId,
   }
 
-  if (userId) {
-    metadata.userId = userId
+  if (context.userId) {
+    metadata.userId = context.userId
   }
 
   try {
@@ -57,20 +89,25 @@ export async function uploadExecutionFile(
       metadata, // Pass metadata for cloud storage and database tracking
     })
 
-    const userFile: UserFile = {
+    // Generate absolute URL for file access
+    const baseUrl = getBaseUrl()
+    const absoluteUrl = `${baseUrl}/api/files/serve/${fileInfo.key}`
+
+    const fileMetadata: InternalFileMetadata = {
       id: fileId,
       name: fileName,
       size: fileBuffer.length,
       type: contentType,
-      url: `/api/files/serve/${fileInfo.key}`, // Always use internal serve path for consistency
+      url: absoluteUrl,
       key: fileInfo.key,
       uploadedAt: new Date().toISOString(),
       expiresAt: getFileExpirationDate(),
-      context: 'execution', // Preserve context in file object
+      context: 'execution',
     }
 
     logger.info(`Successfully uploaded execution file: ${fileName} (${fileBuffer.length} bytes)`)
-    return userFile
+    logger.debug(`Generated absolute URL: ${absoluteUrl}`)
+    return fileMetadata
   } catch (error) {
     logger.error(`Failed to upload execution file ${fileName}:`, error)
     throw new Error(
@@ -81,23 +118,24 @@ export async function uploadExecutionFile(
 
 /**
  * Download a file from execution-scoped storage
+ * Accepts InternalFileMetadata which contains the storage key
  */
-export async function downloadExecutionFile(userFile: UserFile): Promise<Buffer> {
-  logger.info(`Downloading execution file: ${userFile.name}`)
+export async function downloadExecutionFile(fileMetadata: InternalFileMetadata): Promise<Buffer> {
+  logger.info(`Downloading execution file: ${fileMetadata.name}`)
 
   try {
     const { downloadFile } = await import('@/lib/uploads/core/storage-service')
     const fileBuffer = await downloadFile({
-      key: userFile.key,
+      key: fileMetadata.key,
       context: 'execution',
     })
 
     logger.info(
-      `Successfully downloaded execution file: ${userFile.name} (${fileBuffer.length} bytes)`
+      `Successfully downloaded execution file: ${fileMetadata.name} (${fileBuffer.length} bytes)`
     )
     return fileBuffer
   } catch (error) {
-    logger.error(`Failed to download execution file ${userFile.name}:`, error)
+    logger.error(`Failed to download execution file ${fileMetadata.name}:`, error)
     throw new Error(
       `Failed to download file: ${error instanceof Error ? error.message : 'Unknown error'}`
     )
@@ -106,23 +144,26 @@ export async function downloadExecutionFile(userFile: UserFile): Promise<Buffer>
 
 /**
  * Generate a short-lived presigned URL for file download (5 minutes)
+ * Accepts InternalFileMetadata which contains the storage key
  */
-export async function generateExecutionFileDownloadUrl(userFile: UserFile): Promise<string> {
-  logger.info(`Generating download URL for execution file: ${userFile.name}`)
-  logger.info(`File key: "${userFile.key}"`)
+export async function generateExecutionFileDownloadUrl(
+  fileMetadata: InternalFileMetadata
+): Promise<string> {
+  logger.info(`Generating download URL for execution file: ${fileMetadata.name}`)
+  logger.info(`File key: "${fileMetadata.key}"`)
 
   try {
     const { generatePresignedDownloadUrl } = await import('@/lib/uploads/core/storage-service')
     const downloadUrl = await generatePresignedDownloadUrl(
-      userFile.key,
+      fileMetadata.key,
       'execution',
       5 * 60 // 5 minutes
     )
 
-    logger.info(`Generated download URL for execution file: ${userFile.name}`)
+    logger.info(`Generated download URL for execution file: ${fileMetadata.name}`)
     return downloadUrl
   } catch (error) {
-    logger.error(`Failed to generate download URL for ${userFile.name}:`, error)
+    logger.error(`Failed to generate download URL for ${fileMetadata.name}:`, error)
     throw new Error(
       `Failed to generate download URL: ${error instanceof Error ? error.message : 'Unknown error'}`
     )
@@ -131,20 +172,21 @@ export async function generateExecutionFileDownloadUrl(userFile: UserFile): Prom
 
 /**
  * Delete a file from execution-scoped storage
+ * Accepts InternalFileMetadata which contains the storage key
  */
-export async function deleteExecutionFile(userFile: UserFile): Promise<void> {
-  logger.info(`Deleting execution file: ${userFile.name}`)
+export async function deleteExecutionFile(fileMetadata: InternalFileMetadata): Promise<void> {
+  logger.info(`Deleting execution file: ${fileMetadata.name}`)
 
   try {
     const { deleteFile } = await import('@/lib/uploads/core/storage-service')
     await deleteFile({
-      key: userFile.key,
+      key: fileMetadata.key,
       context: 'execution',
     })
 
-    logger.info(`Successfully deleted execution file: ${userFile.name}`)
+    logger.info(`Successfully deleted execution file: ${fileMetadata.name}`)
   } catch (error) {
-    logger.error(`Failed to delete execution file ${userFile.name}:`, error)
+    logger.error(`Failed to delete execution file ${fileMetadata.name}:`, error)
     throw new Error(
       `Failed to delete file: ${error instanceof Error ? error.message : 'Unknown error'}`
     )

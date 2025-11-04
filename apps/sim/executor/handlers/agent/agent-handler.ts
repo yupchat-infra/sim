@@ -183,6 +183,7 @@ export class AgentBlockHandler implements BlockHandler {
             _context: {
               workflowId: ctx.workflowId,
               workspaceId: ctx.workspaceId,
+              userId: ctx.userId,
             },
           },
           false,

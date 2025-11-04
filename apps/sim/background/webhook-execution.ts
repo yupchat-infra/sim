@@ -39,6 +39,7 @@ async function processTriggerFileOutputs(
     workflowId: string
     executionId: string
     requestId: string
+    userId?: string
   },
   path = ''
 ): Promise<any> {
@@ -384,6 +385,7 @@ async function executeWebhookJobInternal(
               workflowId: payload.workflowId,
               executionId,
               requestId,
+              userId: payload.userId,
             })
             Object.assign(input, processedInput)
           }
@@ -413,6 +415,7 @@ async function executeWebhookJobInternal(
               workspaceId: workspaceId || '',
               workflowId: payload.workflowId,
               executionId,
+              userId: payload.userId,
             }
 
             for (const fileField of fileFields) {
@@ -422,8 +425,7 @@ async function executeWebhookJobInternal(
                 const uploadedFiles = await processExecutionFiles(
                   fieldValue,
                   executionContext,
-                  requestId,
-                  payload.userId
+                  requestId
                 )
 
                 if (uploadedFiles.length > 0) {

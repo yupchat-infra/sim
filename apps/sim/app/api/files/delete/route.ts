@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { checkHybridAuth } from '@/lib/auth/hybrid'
 import { createLogger } from '@/lib/logs/console/logger'
 import type { StorageContext } from '@/lib/uploads/config'
-import { deleteFile, hasCloudStorage } from '@/lib/uploads/core/storage-service'
+import { deleteFile } from '@/lib/uploads/core/storage-service'
 import { extractStorageKey, inferContextFromKey } from '@/lib/uploads/utils/file-utils'
 import { verifyFileAccess } from '@/app/api/files/authorization'
 import {
@@ -51,14 +51,7 @@ export async function POST(request: NextRequest) {
 
       const storageContext: StorageContext = context || inferContextFromKey(key)
 
-      const hasAccess = await verifyFileAccess(
-        key,
-        userId,
-        null,
-        undefined,
-        storageContext,
-        !hasCloudStorage() // isLocal
-      )
+      const hasAccess = await verifyFileAccess(key, userId, storageContext)
 
       if (!hasAccess) {
         logger.warn('Unauthorized file delete attempt', { userId, key, context: storageContext })

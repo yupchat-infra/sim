@@ -269,6 +269,29 @@ export function FileUploads() {
   const GRADIENT_TEXT_STYLES =
     'gradient-text bg-gradient-to-b from-gradient-primary via-gradient-secondary to-gradient-primary'
 
+  const FileUploadTableRowSkeleton = () => (
+    <TableRow className='hover:bg-muted/50'>
+      <TableCell className='px-3'>
+        <div className='flex items-center gap-2'>
+          <div className='h-3.5 w-3.5 animate-pulse rounded bg-muted' />
+          <div className='h-4 w-48 animate-pulse rounded bg-muted' />
+        </div>
+      </TableCell>
+      <TableCell className='px-3'>
+        <div className='h-3 w-12 animate-pulse rounded bg-muted' />
+      </TableCell>
+      <TableCell className='px-3'>
+        <div className='h-3 w-16 animate-pulse rounded bg-muted' />
+      </TableCell>
+      <TableCell className='px-3'>
+        <div className='flex items-center gap-1'>
+          <div className='h-6 w-6 animate-pulse rounded bg-muted' />
+          <div className='h-6 w-6 animate-pulse rounded bg-muted' />
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+
   return (
     <div className='relative flex h-full flex-col'>
       {/* Header: search left, file count + Upload right */}
@@ -342,7 +365,21 @@ export function FileUploads() {
       {/* Files Table */}
       <div className='scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent min-h-0 flex-1 overflow-y-auto px-6'>
         {loading ? (
-          <div className='py-8 text-center text-muted-foreground text-sm'>Loading files...</div>
+          <Table className='table-auto text-[13px]'>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead className='w-[56%] px-3 text-xs'>Name</TableHead>
+                <TableHead className='w-[14%] px-3 text-left text-xs'>Size</TableHead>
+                <TableHead className='w-[15%] px-3 text-left text-xs'>Uploaded</TableHead>
+                <TableHead className='w-[15%] px-3 text-left text-xs'>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <FileUploadTableRowSkeleton key={i} />
+              ))}
+            </TableBody>
+          </Table>
         ) : files.length === 0 ? (
           <div className='py-8 text-center text-muted-foreground text-sm'>
             No files uploaded yet
